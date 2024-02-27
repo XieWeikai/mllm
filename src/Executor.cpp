@@ -32,14 +32,14 @@ void Executor::run(Net *net, vector<shared_ptr<Tensor>> input_tensors) {
     vector<int> flashGid = {};
     for (int tid = 0; tid < net->inputNames().size(); ++tid) {
         auto input_name = net->inputNames()[tid];
-        auto input_tensor = input_tensors[tid];
+        auto input_tensor = input_tensors[tid];  // 原来是按顺序给吗，那我咋知道顺序...
         input_tensor->setName(input_name);
-        net->tensors()[input_name] = input_tensor;
+        net->tensors()[input_name] = input_tensor;  // 之前在convert申请的tensor直接没用了，这里直接换一个......
         if (std::find(flashGid.begin(), flashGid.end(), net->inGmap()[input_name]) == flashGid.end()) {
-            flashGid.push_back(net->inGmap()[input_name]);
+            flashGid.push_back(net->inGmap()[input_name]); // subgraph the input tensor is in
         }
     }
-    for (auto Gid : flashGid) {
+    for (auto Gid : flashGid) { // 是吧... 前面convert创建的图里的leaf_node被删掉换成给出的输入了，那subgraph中的op_input也要修改一下，这就是reflashInput做的事
         net->subGraph()["G" + std::to_string(Gid)]->reflashInput(net->tensors());
     }
 
@@ -49,8 +49,8 @@ void Executor::run(Net *net, vector<shared_ptr<Tensor>> input_tensors) {
         string name = "G" + std::to_string(i);
         auto &g = net->subGraph()[name];
 
-        g->reshape();
-        g->setUpTensors();
+        g->reshape();   // 前面知识分配好了op,tensor，但tensor内部全是空的，这里设置好内部各个tensor的形状
+        g->setUpTensors(); // allocate memory for internal tensors
 
         result_ = g->forward();
 

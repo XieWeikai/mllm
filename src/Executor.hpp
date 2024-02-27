@@ -55,7 +55,7 @@ public:
      * \return
      */
     bool checkReshape(bool &init, bool &reshape, vector<shared_ptr<Tensor>> input_tensor) {
-        if (input_sizes_.empty()) {
+        if (input_sizes_.empty()) { // not yet remember the input shape
             for (auto &t : input_tensor) {
                 input_sizes_.push_back(t->shape());
             }
@@ -85,7 +85,7 @@ public:
     }
 
 private:
-    vector<vector<int>> input_sizes_;
+    vector<vector<int>> input_sizes_; // this is shape of input tensor (there may be multiple inputs, each input has a shape)
     vector<shared_ptr<Tensor>> result_;
     ParamLoader *data_loader_;
 

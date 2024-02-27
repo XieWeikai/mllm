@@ -75,10 +75,10 @@ private:
     void *host_ptr_;
     void *device_ptr_; // not used for CPU
     vector<int> shape_;
-    int capacity_;
-    int count_;
-    int allocated_ = 0;
-    bool transed_ = false;
+    int capacity_;  // 莫名其妙...
+    int count_;  // number of element (why needed we can get product of the elements of shape)
+    int allocated_ = 0;   // number of element allocated
+    bool transed_ = false; // if this tensor is transposed
 
     // used for ChildTensor
     vector<int> shape_offset_;

@@ -19,33 +19,33 @@ typedef struct TNetParameter NetParameter;
 
 typedef struct TNetOp {
     OpType type;
-    vector<NetTensor *> in;
+    vector<NetTensor *> in;   // Operation input tensors
     vector<NetTensor *> out;
     vector<string> in_op; // input ops' names;
     string name;
     OpParam param;
-    int out_size = 1; // output tensor size
+    int out_size = 1; // number of output tensors ...
 
 } NetOp;
 
-typedef struct TNetParameter {
-    string weights_path;
-    string model_path;
-    vector<NetOp *> net_ops;
-    vector<NetTensor *> net_tensors;
-    std::set<NetTensor *> net_inputs;
-    std::set<NetTensor *> net_outputs;
-    void topologySort();
+typedef struct TNetParameter { // this may be a compute graph
+    string weights_path;              // no usage ??
+    string model_path;                // no usage ??
+    vector<NetOp *> net_ops;          // all Ops in compute graph
+    vector<NetTensor *> net_tensors;  // all tensors in compute graph (maybe)
+    std::set<NetTensor *> net_inputs; // 计算图的叶子节点(大概)
+    std::set<NetTensor *> net_outputs; // output node of compute graph (maybe) no usage ???
+    void topologySort();   // sort net_ops, so that we could execute op in order
 
 } NetParameter;
 
 // 前置声明
 struct Context {
-    vector<NetParameter> sub_param_;
+    vector<NetParameter> sub_param_;  // each sub_param is a subgraph
     vector<NetOp *> net_ops;
-    std::set<NetTensor *> net_tensors;
-    int idx = 0;
-    int active_sub = 0;
+    std::set<NetTensor *> net_tensors; // all the tensors
+    int idx = 0;  // it seems that every time we add a tensor, the idx increase by 1. maybe as a unique id
+    int active_sub = 0;   // we may create multiple compute graph, this is the current compute graph (index of sub_param_)
 };
 inline NetParameter *get_active_subgraph(Context *ctx) {
     if (ctx->active_sub >= ctx->sub_param_.size()) {
@@ -64,11 +64,11 @@ struct Tensor_pair {
 #define ANYDIM -198098
 typedef struct TNetTensor {
     string name;
-    vector<int> shape_;
+    vector<int> shape_;   // only input has shape ......
     DataType type;
-    NetOp *in;
-    vector<NetOp *> out;
-    NetParameter *subgraph;
+    NetOp *in;     // 一个tensor可以由别的一些tensor计算得到 这个计算包括计算的类型和计算输入，都在NetOp里了
+    vector<NetOp *> out;  // 这个tensor可以是别的一些计算的输入 这个out就是以该tensor为输入的NetOp
+    NetParameter *subgraph;  // which subgraph this tensor is in
     Context *ctx;
 
     /**

@@ -75,7 +75,7 @@ static void topology(const NetParameter *net, vector<NetOp *> &result, NetOp *op
     }
     visited[op] = true;
     for (auto *input : op->in) {
-        if (input->in != nullptr && std::find(net->net_inputs.begin(), net->net_inputs.end(), input) == net->net_inputs.end()) {
+        if (input->in != nullptr && std::find(net->net_inputs.begin(), net->net_inputs.end(), input) == net->net_inputs.end()) { // 有输入且不是叶子节点
             topology(net, result, input->in, visited);
         }
     }
@@ -89,7 +89,7 @@ void NetParameter::topologySort() {
     for (auto *op : net_ops) {
         topology(this, *result, op, visited);
     }
-    net_ops = *result;
+    net_ops = *result; // 这应该是把计算图中的各个计算(NetOp) 按照计算顺序排好
 }
 
 /**
@@ -218,9 +218,9 @@ NetTensor *_SiLU(std::vector<NetTensor *> inputs, string name) {
     out_tensor->name = "outtensor-" + name + "-00";
     out_tensor->type = inputs[0]->type;
     ctx->idx++;
-    _STORE_OUT_TENSOR
-    _NEW_OP(mllm::SILU)
-    _UPDATE_INPUT_TENSORS
+    _STORE_OUT_TENSOR // put out_tensor in context and subgraph
+    _NEW_OP(mllm::SILU)  // create a new op and put it in ctx and subgraph
+    _UPDATE_INPUT_TENSORS  // set in for new_op; set input->out = new_op
     out_tensor->in = net_op_;
     out_tensor->ctx = ctx;
     return out_tensor;

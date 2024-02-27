@@ -13,18 +13,18 @@ std::string intToStringWithLeadingZero(int num) {
 namespace mllm {
 
 Graph::Graph(const NetParameter &param, Backend *bn,
-             unordered_map<string, shared_ptr<Tensor>> &external_tensors,
+             unordered_map<string, shared_ptr<Tensor>> &external_tensors, // external_tensors ara inputs of a graph
              int threadCount) {
     backend_ = bn;
 
-    for (auto net_tensor : param.net_tensors) {
+    for (auto net_tensor : param.net_tensors) {  // create tensors that is not leafs
         auto it = external_tensors.find(net_tensor->name);
-        if (it == tensors_.end()) { // not in external_tensors
+        if (it == tensors_.end()) { // not in external_tensors (not input tensors)               // what? why not external_tensors.end()
             tensors_[net_tensor->name] = std::make_shared<Tensor>(backend_);
             tensors_[net_tensor->name]->setName(net_tensor->name);
         }
     }
-    for (auto net_op : param.net_ops) {
+    for (auto net_op : param.net_ops) { // create ops
         shared_ptr<Op> my_op(nullptr);
         auto *new_op = backend_->opCreate(net_op->param, net_op->name, threadCount);
         my_op.reset(new_op);
@@ -37,8 +37,8 @@ Graph::Graph(const NetParameter &param, Backend *bn,
         op_names_.push_back(op_name);
         auto in_tensors = net_op->in;
         vector<shared_ptr<Tensor>> inTensors;
-        for (auto *in_t : in_tensors) {
-            if(in_t->in == NULL){
+        for (auto *in_t : in_tensors) { // set every op's input tensors
+            if(in_t->in == NULL){ // one input of this op is input of the graph
                 connect_input = true;
             }
             auto in_t_name = in_t->name;
@@ -50,7 +50,7 @@ Graph::Graph(const NetParameter &param, Backend *bn,
             }
         }
         vector<shared_ptr<Tensor>> outTensors;
-        for (int oz = 0; oz < net_op->out_size; oz++) {
+        for (int oz = 0; oz < net_op->out_size; oz++) { // 逆天，那个out不用,只用个out_size
             auto out_t_name = "outtensor-" + op_name + "-" + intToStringWithLeadingZero(oz);
             auto it = tensors_.find(out_t_name);
             if (it != tensors_.end()) {

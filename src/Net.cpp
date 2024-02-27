@@ -25,9 +25,10 @@ Net::Net(BackendConfig config){
 }
 
 void Net::convert(vector<NetParameter> &param, BackendType backend_type, int threadCount) {
-    for (int ii = 0; ii < (int)param.size(); ++ii) {
-        auto &sub_param = param[ii];
+    for (int ii = 0; ii < (int)param.size(); ++ii) { // this loop records input tensors
+        auto &sub_param = param[ii]; // each sub_param stand for a subgraph
         vector<string> names = {};
+        // Lines 31 to 40 are inexplicably unclear. 31~40行莫名其妙不知所以，代码中的net_inputs根本没有用，空的
         auto net_in_tensor = sub_param.net_inputs;
         for (const auto &out_t : net_in_tensor) {
             tensors_[out_t->name] = std::make_shared<Tensor>(backends_[backend_type].get());
@@ -39,7 +40,7 @@ void Net::convert(vector<NetParameter> &param, BackendType backend_type, int thr
         }
 
         for (auto *t:sub_param.net_tensors) {
-            if(t->in == NULL){
+            if(t->in == NULL){ // input tensor
                 auto *in_tensor = t;
                 tensors_[in_tensor->name] = std::make_shared<Tensor>(backends_[backend_type].get());
                 tensors_[in_tensor->name]->setName(in_tensor->name);

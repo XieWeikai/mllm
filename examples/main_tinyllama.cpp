@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
 
     ParamLoader param_loader(model_path);
     Executor ex(&param_loader);
-    ex.setup(&net);
+    ex.setup(&net);  // load params
 
     string system_prompt_start = " You are a Q&A assistant. Your goal is to answer questions as accurately as possible based on the instructions and context provided.<|USER|>";
     string system_prompt_end = "<|ASSISTANT|>";

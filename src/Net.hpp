@@ -36,13 +36,13 @@ public:
     }
 
 private:
-    unordered_map<string, shared_ptr<Graph>> subGraphs_;
-    unordered_map<string, shared_ptr<Tensor>> tensors_;
-    vector<vector<string>> tensor_names_;
+    unordered_map<string, shared_ptr<Graph>> subGraphs_;  // <"Gi, subgraph>"
+    unordered_map<string, shared_ptr<Tensor>> tensors_; // input tensors (tensor->in == nullptr)  <name, tensor>
+    vector<vector<string>> tensor_names_;               // input tensors' name in each subgraph
     vector<NetOp *> ops_;
-    unordered_map<BackendType, shared_ptr<Backend>> backends_;
-    vector<string> input_names_ ;
-    map<string, int> inputname_graphidx_;
+    unordered_map<BackendType, shared_ptr<Backend>> backends_;  // <type, backend>
+    vector<string> input_names_ ;                       // all input tensors name
+    map<string, int> inputname_graphidx_;               // <input tensor name, subgraph id>  subgraph is the index of subparam
 
 };
 
