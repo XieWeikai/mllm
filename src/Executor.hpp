@@ -6,7 +6,7 @@
 namespace mllm {
 class Executor {
 public:
-    Executor(ParamLoader *data_loader) :
+    Executor(AbstructLoader *data_loader) :
         data_loader_(data_loader) {
     }
     ~Executor() = default;
@@ -87,7 +87,7 @@ public:
 private:
     vector<vector<int>> input_sizes_; // this is shape of input tensor (there may be multiple inputs, each input has a shape)
     vector<shared_ptr<Tensor>> result_;
-    ParamLoader *data_loader_;
+    AbstructLoader *data_loader_;
 
     double load_time_ = 0;
     vector<double> run_time_;
