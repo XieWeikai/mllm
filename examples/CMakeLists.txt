@@ -21,7 +21,8 @@ macro(func_llm_add_executable target)
     add_executable(${target}
         ${PROJECT_SOURCE_DIR}/examples/${target}.cpp 
         ${DIR_SRC_CPU} 
-        ${DIR_SRC_MEM_MANAGER} 
+        ${DIR_SRC_MEM_MANAGER}
+        ${DIR_SRC_CACHE}
         ${DIR_SRC_EXP} 
         ${DIR_SRC}
         ${PROJECT_SOURCE_DIR}/src/tokenizers/Tokenizer.cpp
@@ -91,6 +92,9 @@ func_vlm_add_executable(demo_imagebind_1mod)
 func_vlm_add_executable(demo_phi3v)
 func_vlm_add_executable(demo_qwen2_vl)
 # func_vlm_add_executable(demo)
+
+# prefix-cache (experiemental)
+func_llm_add_executable(prefix_cache)
 
 # QNN demo
 

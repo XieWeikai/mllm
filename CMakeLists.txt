@@ -130,6 +130,7 @@ aux_source_directory(${PROJECT_SOURCE_DIR}/src/express DIR_SRC_EXP)
 
 aux_source_directory(${PROJECT_SOURCE_DIR}/src/processor DIR_SRC_PROCESSOE)
 aux_source_directory(${PROJECT_SOURCE_DIR}/src/memory DIR_SRC_MEM_MANAGER)
+aux_source_directory(${PROJECT_SOURCE_DIR}/src/kvcache DIR_SRC_CACHE)
 aux_source_directory(${PROJECT_SOURCE_DIR}/examples EMP_SRC)
 aux_source_directory(${PROJECT_SOURCE_DIR}/test TEST_SRC)
 aux_source_directory(${PROJECT_SOURCE_DIR}/third_party/wenet_audio DIR_THIRDPARTY_AUDIO)
