@@ -686,6 +686,36 @@ public:
     }
 };
 
+class Attention final : public Layer {
+private:
+    bool causal;
+public:
+    explicit Attention(int num_qo_heads, int num_kv_heads, int head_dim, bool causal, std::string name)
+    : causal(causal) {
+        param_["num_qo_heads"] = num_qo_heads;
+        param_["num_kv_heads"] = num_kv_heads;
+        param_["head_dim"] = head_dim;
+        param_["causal"] = (float)causal;
+
+        init(std::move(name), OpType::ATTENTION);
+    }
+    // NOTE: only considering the case that no batching is needed
+    // since it is often the case that the batch size is 1 on edge devices
+    Tensor &operator()(Tensor &queries, Tensor kv_cache, Tensor &kv_indices) { // causal == true, no mask
+        auto ts = run({queries, kv_cache, kv_indices}, 1);
+        return ts[0].get();
+    }
+
+    // when using customised mask
+    Tensor &operator()(Tensor &queries, Tensor kv_cache, Tensor &kv_indices, Tensor &mask) {
+        if (causal)
+            throw  std::runtime_error("Attention: causal mask should not be provided when causal is true");
+
+        auto ts = run({queries, kv_cache, kv_indices, mask}, 1);
+        return ts[0].get();
+    }
+};
+
 class KVCache final : public Layer {
 public:
     KVCache() = default;

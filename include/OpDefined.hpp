@@ -65,6 +65,7 @@ enum OpType {
     OP_NUM,
     NTKROPE,
     KVCOPY,
+    ATTENTION,
 
     // add in xnnpack
     DIRECT,

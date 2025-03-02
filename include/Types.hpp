@@ -73,6 +73,9 @@ enum DataType {
     MLLM_TYPE_Q4_0_8_8 = 21,
     MLLM_TYPE_Q8_0_4_4,
     MLLM_TYPE_COUNT,
+
+    // for mask
+    MLLM_TYPE_BOOL,
 };
 
 enum ChlType {

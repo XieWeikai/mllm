@@ -64,6 +64,7 @@
 #include "op/CPUKVCacheXp.hpp"
 
 #include "op/CPUKVCopy.hpp"
+#include "op/CPUAttention.hpp"
 
 #include "function/CPUBinaryFunc.hpp"
 #include "function/CPUCatFunc.hpp"
@@ -183,6 +184,7 @@ void CPUBackend::registerOps() {
     addCreator(NTKROPE, (CPUBackend::Creator *)(new CPUNTKRoPECreator()));
     addCreator(HEADLINEAR, (CPUBackend::Creator *)(new CPUHeadLinearCreator()));
     addCreator(KVCOPY, (CPUBackend::Creator *)(new CPUKVCopyCreator()));
+    addCreator(ATTENTION, (CPUBackend::Creator *)(new CPUAttentionCreator()));
 }
 TensorFunction *CPUBackend::funcCreate(const TensorFuncType type) {
     auto iter = map_function_.find(type);

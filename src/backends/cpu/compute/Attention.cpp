@@ -150,14 +150,16 @@ void AttentionFP32Head(
 
         bool *q_mask = mask ? mask + q_i * kv_length : nullptr;
         for(int kv_i = 0; kv_i < kv_length; kv_i++){
-            //            if(mask == nullptr && is_causal && kv_i > kv_length - q_length + q_i){
-            //                break;
-            //            }
-
-            if(mask == nullptr && is_causal && kv_i > q_i){
-                // the same as scaled_dot_product_attention in pytorch
+            if(mask == nullptr && is_causal && kv_i > kv_length - q_length + q_i){
                 break;
             }
+
+            // though this is the same as pytorch
+            // I think it is not really causal when using kv_cache
+            // if(mask == nullptr && is_causal && kv_i > q_i){
+            //    // the same as scaled_dot_product_attention in pytorch
+            //    break;
+            // }
 
             if(q_mask != nullptr && !q_mask[kv_i]){
                 continue;

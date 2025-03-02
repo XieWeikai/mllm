@@ -65,17 +65,5 @@ ErrorCode CPUKVCopy::execute(vector<shared_ptr<Tensor>> inputs, vector<shared_pt
 
     return MLLM_NO_ERROR;
 }
-
-ErrorCode CPUKVCopy::load(AbstructLoader &loader) {
-    return Op::load(loader);
-}
-
-ErrorCode CPUKVCopy::free(vector<shared_ptr<Tensor>> inputs, vector<shared_ptr<Tensor>> outputs) {
-    return Op::free(inputs, outputs);
-}
-
-ErrorCode CPUKVCopy::setUp(vector<shared_ptr<Tensor>> inputs, vector<shared_ptr<Tensor>> outputs) {
-    return Op::setUp(inputs, outputs);
-}
 } // namespace mllm
 
