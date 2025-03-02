@@ -1466,30 +1466,25 @@ public:
         }
 
         std::cout << "----------------------------------------" << std::endl;
-        std::cout << name() << ": shape:[" << batch() << " " << head() << " " << sequence() << " " << dimension() << "]" << std::endl;
+        std::cout << name() << ": shape:[" << batch() << " " << sequence() << " " << head() << " " << dimension() << "]" << std::endl;
 
         int N = batch();
         int C = head();
         int H = sequence();
         int W = dimension();
 
-        // 每行最多打印的元素数量
         const int max_elements_per_line = 6;
-        // 最多打印的行数
         const int max_rows = 6;
 
-        // 递归打印函数
         auto printRecursive = [&](auto&& self, int n, int c, int h, int w, int depth) -> void {
             if (depth == 0) {
                 std::cout << "[";
             }
 
             if (depth == 3) {
-                // 打印单个元素
-                std::cout << std::fixed << std::setprecision(7) << std::setw(10) << static_cast<float>(dataAt<Dtype>(n, c, h, w)) << " ";
-                if (w == W - 1) {
-                    std::cout << "]";
-                }
+                // 仅打印元素，不闭合括号
+                std::cout << std::fixed << std::setprecision(7) << std::setw(10)
+                          << static_cast<float>(dataAt<Dtype>(n, c, h, w)) << " ";
                 return;
             }
 
@@ -1509,7 +1504,7 @@ public:
                         self(self, n, c, h, w_idx, depth + 1);
                     }
                 }
-                std::cout << "]";
+                std::cout << "]"; // 在W维度处理完后统一闭合
                 return;
             }
 
@@ -1536,7 +1531,7 @@ public:
                         }
                     }
                 }
-                std::cout << "]";
+                std::cout << "]"; // 在H维度处理完后统一闭合
                 return;
             }
 
@@ -1547,18 +1542,18 @@ public:
                         std::cout << std::endl << std::endl;
                     }
                 }
-                std::cout << "]";
+                std::cout << "]"; // 在C维度处理完后闭合最外层
                 return;
             }
         };
 
-        // 打印整个 Tensor
         for (int n_idx = 0; n_idx < N; ++n_idx) {
             printRecursive(printRecursive, n_idx, 0, 0, 0, 0);
             if (n_idx < N - 1) {
                 std::cout << std::endl << std::endl;
             }
         }
+        std::cout << "\n----------------------------------------" << std::endl;
     }
 
     template <typename Dtype>

@@ -671,6 +671,21 @@ public:
     }
 };
 
+class KVCopy final : public Layer {
+public:
+    explicit KVCopy(int max_tokens, int num_kv_head, int head_dim, std::string name) {
+        param_["max_tokens"] = max_tokens;
+        param_["num_kv_head"] = num_kv_head;
+        param_["head_dim"] = head_dim;
+
+        init(std::move(name), OpType::KVCOPY);
+    }
+    Tensor &operator()(Tensor &kvcache, Tensor &k, Tensor &v, Tensor &position) {
+        auto ts = run({kvcache, k, v, position}, 0);
+        return ts[0].get();
+    }
+};
+
 class KVCache final : public Layer {
 public:
     KVCache() = default;

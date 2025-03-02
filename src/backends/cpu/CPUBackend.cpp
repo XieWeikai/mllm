@@ -63,6 +63,8 @@
 #include "op/CPUKVCacheNPU.hpp"
 #include "op/CPUKVCacheXp.hpp"
 
+#include "op/CPUKVCopy.hpp"
+
 #include "function/CPUBinaryFunc.hpp"
 #include "function/CPUCatFunc.hpp"
 #include "function/CPUClipFunc.hpp"
@@ -180,6 +182,7 @@ void CPUBackend::registerOps() {
     addCreator(XP_KVCACHE, (CPUBackend::Creator *)(new CPUKVCacheXpCreator()));
     addCreator(NTKROPE, (CPUBackend::Creator *)(new CPUNTKRoPECreator()));
     addCreator(HEADLINEAR, (CPUBackend::Creator *)(new CPUHeadLinearCreator()));
+    addCreator(KVCOPY, (CPUBackend::Creator *)(new CPUKVCopyCreator()));
 }
 TensorFunction *CPUBackend::funcCreate(const TensorFuncType type) {
     auto iter = map_function_.find(type);
