@@ -47,6 +47,12 @@ private:
     void clearCache() override {
         h_cnt_ = 0;
     }
+
+    void setPosition(int pos) {
+        h_cnt_ = pos;
+    }
+
+    void register_custom_method();
 };
 
 class CPURoPECreator : public CPUBackend::Creator {

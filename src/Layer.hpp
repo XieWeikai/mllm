@@ -640,6 +640,10 @@ public:
     void clearCache() {
         return op_->clearCache();
     }
+
+    void setPosition(int pos) {
+        op_->callFunc("setPosition", pos);
+    }
 };
 
 class IRoPE final : public Layer {

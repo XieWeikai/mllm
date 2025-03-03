@@ -1,21 +1,72 @@
 #ifndef MLLM_OP_H
 #define MLLM_OP_H
 // #define DEBUGPRINT
-#include "Backend.hpp"
-#include "Tensor.hpp"
-#include "Types.hpp"
 #include <cassert>
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <any>
+#include <unordered_map>
+#include <string>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
+
 #include "ParamLoader.hpp"
 #include "Timing.hpp"
+#include "Backend.hpp"
+#include "Tensor.hpp"
+#include "Types.hpp"
+
 using std::function;
 namespace mllm {
 
 class Backend;
 class Tensor;
 class ParamLoader;
+
+template <typename T>
+struct function_traits;
+
+
+template <typename Ret, typename... Args>
+struct function_traits<Ret(*)(Args...)> {
+    using result_type = Ret;
+    using args_tuple = std::tuple<Args...>;
+    static constexpr bool is_member = false;
+};
+
+template <typename C, typename Ret, typename... Args>
+struct function_traits<Ret(C::*)(Args...)> {
+    using result_type = Ret;
+    using args_tuple = std::tuple<Args...>;
+    static constexpr bool is_member = true;
+};
+
+template <typename C, typename Ret, typename... Args>
+struct function_traits<Ret(C::*)(Args...) const> {
+    using result_type = Ret;
+    using args_tuple = std::tuple<Args...>;
+    static constexpr bool is_member = true;
+};
+
+template <typename Functor>
+struct function_traits {
+private:
+    using call_type = decltype(&Functor::operator());
+public:
+    using result_type = typename function_traits<call_type>::result_type;
+    using args_tuple = typename function_traits<call_type>::args_tuple;
+    static constexpr bool is_member = function_traits<call_type>::is_member;
+};
+
+// std::function
+template <typename Ret, typename... Args>
+struct function_traits<std::function<Ret(Args...)>> {
+    using result_type = Ret;
+    using args_tuple = std::tuple<Args...>;
+    static constexpr bool is_member = false;
+};
 
 class Op {
 public:
@@ -139,6 +190,74 @@ protected:
     DataType activation_dtype_ = MLLM_TYPE_F32;
     OpType type_;
     static DataType no_load_weights_dtype_;
+
+// this is for custom functions of Ops that is not in standard Op
+private:
+    class ICallable {
+    public:
+        virtual ~ICallable() = default;
+        virtual std::any invoke(std::any args) = 0;
+    };
+
+    template <typename Ret, typename... Args>
+    class CallableImpl : public ICallable {
+    public:
+        using FunctionType = std::function<Ret(Args...)>;
+
+        explicit CallableImpl(FunctionType func) : func_(std::move(func)) {}
+
+        std::any invoke(std::any args) override {
+            auto tuple = std::any_cast<std::tuple<Args...>>(args);
+            if constexpr (std::is_void_v<Ret>) {
+                std::apply(func_, tuple);
+                return {};
+            } else {
+                return std::apply(func_, tuple);
+            }
+        }
+
+    private:
+        FunctionType func_;
+    };
+
+    std::unordered_map<std::string, std::unique_ptr<ICallable>> functions_;
+
+    template <typename Tuple>
+    struct CallableImplHelper;
+
+    template <typename... Args>
+    struct CallableImplHelper<std::tuple<Args...>> {
+        template <typename Ret>
+        using type = CallableImpl<Ret, Args...>;
+    };
+
+public:
+    // register a custom function for an Op
+    template <typename Func>
+    void registerFunc(const std::string& name, Func func) {
+        using traits = function_traits<Func>;
+        using Ret = typename traits::result_type;
+        using ArgsTuple = typename traits::args_tuple;
+
+        using CallableType = typename CallableImplHelper<ArgsTuple>::template type<Ret>;
+        functions_[name] = std::make_unique<CallableType>(std::forward<Func>(func));
+    }
+
+    // a helper function to call a registered function
+    template <typename Ret = void, typename... Args>
+    Ret callFunc(const std::string& name, Args... args) {
+        auto it = functions_.find(name);
+        if (it == functions_.end()) {
+            throw std::runtime_error("Function not registered: " + name);
+        }
+
+        std::tuple<Args...> argTuple(args...);
+        std::any result = it->second->invoke(argTuple);
+
+        if constexpr (!std::is_void_v<Ret>) {
+            return std::any_cast<Ret>(result);
+        }
+    }
 };
 
 class Callable {

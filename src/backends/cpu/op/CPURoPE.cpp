@@ -134,12 +134,14 @@ void sinusoidal_position_embedding_huggingface(int seq_len, int output_dim, cons
 CPURoPE::CPURoPE(Backend *bn, string opName, int pose_type, int threadCount) :
     thread_count(threadCount),
     Op(bn, opName) {
+    register_custom_method();
     pose_type_ = pose_type;
 }
 
 CPURoPE::CPURoPE(Backend *bn, string opName, int pose_type, float rope_theta, int max_position_embeddings, int threadCount) :
     thread_count(threadCount),
     Op(bn, opName) {
+    register_custom_method();
     pose_type_ = pose_type;
     rope_theta_ = rope_theta;
     pos_max_ = max_position_embeddings;
@@ -148,6 +150,7 @@ CPURoPE::CPURoPE(Backend *bn, string opName, int pose_type, float rope_theta, in
 CPURoPE::CPURoPE(Backend *bn, string opName, int pose_type, float rope_theta, float partial_rotary_factor, int max_position_embeddings, int threadCount) :
     thread_count(threadCount),
     Op(bn, opName) {
+    register_custom_method();
     pose_type_ = pose_type;
     rope_theta_ = rope_theta;
     partial_rotary_factor_ = partial_rotary_factor;
@@ -157,6 +160,7 @@ CPURoPE::CPURoPE(Backend *bn, string opName, int pose_type, float rope_theta, fl
 CPURoPE::CPURoPE(Backend *bn, string opName, OpParam& config, int threadCount) :
     thread_count(threadCount),
     Op(bn,opName) {
+    register_custom_method();
     config_ = config;
     pose_type_ = config.at("pose_type");
     auto it = config.find("rope_theta");
@@ -496,5 +500,10 @@ ErrorCode CPURoPE::load(AbstructLoader &loader) {
 }
 ErrorCode CPURoPE::free(vector<shared_ptr<Tensor>> inputs, vector<shared_ptr<Tensor>> outputs) {
     return Op::free(inputs, outputs);
+}
+void CPURoPE::register_custom_method() {
+    registerFunc("setPosition", [this](int pos) {
+        this->setPosition(pos);
+    });
 }
 } // namespace mllm

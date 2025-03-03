@@ -112,6 +112,10 @@ public:
 
         return {o};
     }
+
+    vector<RoPE *> get_rope() override {
+        return {&q_rope, &k_rope};
+    }
 };
 
 class Llama3NaiveAttention final : public Llama3Attn {
@@ -317,6 +321,13 @@ public:
             for (auto &cache : kvcache) { cache->clearCache(); }
             auto ropes = block.get_attention().get_rope();
             for (auto &rope : ropes) { rope->clearCache(); }
+        }
+    }
+
+    void set_position(int pos) {
+        for (auto &block : blocks) {
+            auto ropes = block.get_attention().get_rope();
+            for (auto &rope : ropes) { rope->setPosition(pos); }
         }
     }
 };

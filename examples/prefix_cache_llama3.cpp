@@ -23,7 +23,6 @@ void put_values(Tensor &t, vector<int> values) {
     t.reshape(1, 1, values.size(), 1);
     for (int i = 0; i < values.size(); i++) {
         t.setDataAt<int>(0, 0, i, 0, values[i]);
-//        printf("data at i: %d\n", t.dataAt<int>(0, 0, i, 0));
     }
 }
 
@@ -97,6 +96,7 @@ int main(int argc, char **argv){
         auto last_token = req.tokens.back();
         req.tokens.pop_back();
         radix_cache.matchPrefix(req.tokens, req.kv_indices); // find prefix match in radix cache
+        model.set_position(req.kv_indices.size());  // NOTE: set rope position
         req.tokens.push_back(last_token);
 
         vector<token_id_t> input_ids;
@@ -105,7 +105,6 @@ int main(int argc, char **argv){
             input_ids.push_back(tokens[i]);
         }
         auto input_tensor = Tokenizer::tokens2Input(input_ids);
-//        input_tensor.printDataTorchLike<float>();
 
         for (int step = 0; step < 100; step++) {
             int num_slots_needed = req.tokens.size() - req.kv_indices.size();
@@ -119,8 +118,6 @@ int main(int argc, char **argv){
                                   out_loc_vec.end());
             put_values(out_loc, out_loc_vec);
             put_values(kv_indices, req.kv_indices);
-//            out_loc.printDataTorchLike<int>();
-//            kv_indices.printDataTorchLike<int>();
 
             // run model
             all_inputs[0] = input_tensor;
