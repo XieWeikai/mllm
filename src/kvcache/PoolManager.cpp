@@ -1,6 +1,7 @@
 //
 // Created by xwk on 25-2-27.
 //
+#include <algorithm>
 
 #include "PoolManager.hpp"
 
@@ -24,10 +25,10 @@ std::vector<int> SimplePoolManager::allocate(int needed_size) {
     }
 
     // Calculate start position and create result array
-    const int start_pos = current_size - needed_size;
+    const int used_slots = pool_size - current_size;
     std::vector<int> result(
-        available_slots.begin() + start_pos,
-        available_slots.begin() + current_size
+        available_slots.rbegin() + used_slots,
+        available_slots.rbegin() + used_slots + needed_size
     );
 
     current_size -= needed_size;
@@ -45,8 +46,8 @@ void SimplePoolManager::deallocate(const std::vector<int>& slots) {
 
     // Batch copy released slots to the end of the available list
     std::copy(
-        slots.begin(),
-        slots.end(),
+        slots.rbegin(),
+        slots.rend(),
         available_slots.begin() + current_size
     );
     current_size += slots_count;

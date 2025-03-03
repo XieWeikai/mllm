@@ -1466,7 +1466,7 @@ public:
         }
 
         std::cout << "----------------------------------------" << std::endl;
-        std::cout << name() << ": shape:[" << batch() << " " << sequence() << " " << head() << " " << dimension() << "]" << std::endl;
+        std::cout << name() << ": shape:[" << batch() << " " << head() << " " << sequence() << " " << dimension() << "]" << std::endl;
 
         int N = batch();
         int C = head();
@@ -1484,7 +1484,7 @@ public:
             if (depth == 3) {
                 // 仅打印元素，不闭合括号
                 std::cout << std::fixed << std::setprecision(7) << std::setw(10)
-                          << static_cast<float>(dataAt<Dtype>(n, c, h, w)) << " ";
+                          <<(dataAt<Dtype>(n, c, h, w)) << " ";
                 return;
             }
 

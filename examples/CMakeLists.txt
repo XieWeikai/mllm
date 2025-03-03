@@ -95,6 +95,7 @@ func_vlm_add_executable(demo_qwen2_vl)
 
 # prefix-cache (experiemental)
 func_llm_add_executable(prefix_cache)
+func_llm_add_executable(prefix_cache_llama3)
 
 # QNN demo
 

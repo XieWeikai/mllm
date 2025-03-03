@@ -689,13 +689,14 @@ void RadixCache::saveDot(const char* filename) {
     out << "}\n";
 }
 
-void RadixCache::evict(int num) {
+void RadixCache::evict(int num, PoolManagerBase *pool) {
     while (num --){
         auto data = lru->evict();
         if (data == nullptr) { // no evictable node in LRU
             break;
         }
         auto node = static_cast<TreeNode *>(data);
+        pool->deallocate(node->value); // release slots in pool
         deleteLeaf(node);
     }
 }

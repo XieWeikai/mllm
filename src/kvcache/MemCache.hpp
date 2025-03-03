@@ -123,7 +123,7 @@ public:
 
     void cacheFinishedReq(Req &req);
 
-    void evict(int num);
+    void evict(int num, PoolManagerBase *pool);
 
     void prettyPrint();
 

@@ -130,7 +130,7 @@ public:
         loader = &param_loader;
         doLoad = true;
         vector<Tensor> tmps;
-        int max_in_size = 5;
+        int max_in_size = 200;
         for (int i = 0; i < max_in_size; ++i) {
             Tensor t(Backend::global_backends[MLLM_CPU]);
             t.setName("input" + std::to_string(i));

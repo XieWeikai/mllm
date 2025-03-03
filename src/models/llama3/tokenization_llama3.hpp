@@ -76,6 +76,12 @@ public:
         return tokens2Input(tokens_id, name, type);
     }
 
+    vector<token_id_t> tokenize_and_get_ids(const std::string &text){
+        auto tokens_id = vector<token_id_t>();
+        TiktokenTokenizer::tokenize(text, tokens_id, false);
+        return tokens_id;
+    }
+
     std::string detokenize(const std::vector<token_id_t> &tokens) override {
         return TiktokenTokenizer::detokenize(tokens);
     }

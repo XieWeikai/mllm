@@ -32,7 +32,89 @@ public:
     }
 };
 
-class Llama3Attention final : public Module {
+class Llama3Attn : public Module {
+public:
+    virtual vector<KVCache *> get_cache() {
+        throw std::runtime_error("Not implemented");
+    }
+
+    virtual vector<RoPE *> get_rope() {
+        throw std::runtime_error("Not implemented");
+    }
+};
+
+class Llama3PagedAttention final : public Llama3Attn {
+    Layer q_proj;      // Query projection
+    Layer k_proj;      // Key projection
+    Layer v_proj;      // Value projection
+    Layer o_proj;      // Output projection
+    RoPE q_rope;       // RoPE for queries
+    RoPE k_rope;       // RoPE for keys
+    int head_size_;    // Size of each attention head
+    int kv_head_size_; // Size of each key/value head
+    int hidden_dim_;   // Hidden dimension size
+
+    KVCopy cpy; // kv copy
+    Attention attn; // paged attention
+public:
+    Llama3PagedAttention() = default;
+
+    Llama3PagedAttention(int hidden_dim, int head_size, int kv_head_size, RoPEType RoPE_type, float rope_theta,
+                         int max_position_embeddings, int cache_limit, const TransformerNameConfig &names,
+                         const string &base_name, const RoPEConfig &rope_config = {}) : cpy(cache_limit, kv_head_size, hidden_dim / head_size, base_name + "kv_copy"),
+    attn(head_size, kv_head_size, hidden_dim / head_size, true, base_name + "attn") {
+        hidden_dim_ = hidden_dim;
+        head_size_ = head_size;
+        kv_head_size_ = kv_head_size;
+
+        // Initialize projections
+        q_proj = Linear(hidden_dim, head_size * (hidden_dim / head_size), false, base_name + names._q_proj_name);
+        k_proj = Linear(hidden_dim, kv_head_size * (hidden_dim / head_size), false, base_name + names._k_proj_name);
+        v_proj = Linear(hidden_dim, kv_head_size * (hidden_dim / head_size), false, base_name + names._v_proj_name);
+        o_proj = Linear(head_size * (hidden_dim / head_size), hidden_dim, false, base_name + names._o_proj_name);
+
+        // Initialize RoPE
+        if (!rope_config.empty()) {
+            q_rope = RoPE(RoPE_type, rope_config, base_name + "q_rope");
+            k_rope = RoPE(RoPE_type, rope_config, base_name + "k_rope");
+        } else if (RoPE_type > 0) {
+            q_rope = RoPE(RoPE_type, rope_theta, max_position_embeddings, base_name + "q_rope");
+            k_rope = RoPE(RoPE_type, rope_theta, max_position_embeddings, base_name + "k_rope");
+        }
+    }
+
+    vector<Tensor> Forward(vector<Tensor> inputs, vector<std::any> args) override {
+        Tensor q = q_proj(inputs[0]); // Query projection
+        Tensor k = k_proj(inputs[1]); // Key projection
+        Tensor v = v_proj(inputs[2]); // Value projection
+        Tensor &out_loc = inputs[3]; // kv cache location
+        Tensor &kv_indices = inputs[4]; // kv cache indices
+        Tensor &kv_cache = inputs[5]; // kv cache
+
+        // Reshape tensors for multi-head attention
+        q = q.view(-1, head_size_, -1, hidden_dim_ / head_size_);
+        k = k.view(-1, kv_head_size_, -1, hidden_dim_ / head_size_);
+        v = v.view(-1, kv_head_size_, -1, hidden_dim_ / head_size_);
+
+        // Apply RoPE
+        if (q_rope.ready() && k_rope.ready()) {
+            q = q_rope(q);
+            k = k_rope(k);
+        }
+
+        if(cpy.ready())
+            cpy(kv_cache, k, v, out_loc); // copy to kv cache
+
+        auto o = attn(q, kv_cache, kv_indices);
+
+        o = o.view(-1, 1, -1, hidden_dim_); // Reshape to original dimensions
+        o = o_proj(o);                      // Output projection
+
+        return {o};
+    }
+};
+
+class Llama3NaiveAttention final : public Llama3Attn {
     Layer q_proj;      // Query projection
     Layer k_proj;      // Key projection
     Layer v_proj;      // Value projection
@@ -47,9 +129,9 @@ class Llama3Attention final : public Module {
     int hidden_dim_;   // Hidden dimension size
 
 public:
-    Llama3Attention() = default;
+    Llama3NaiveAttention() = default;
 
-    Llama3Attention(int hidden_dim, int head_size, int kv_head_size, RoPEType RoPE_type, float rope_theta,
+    Llama3NaiveAttention(int hidden_dim, int head_size, int kv_head_size, RoPEType RoPE_type, float rope_theta,
                     int max_position_embeddings, int cache_limit, const TransformerNameConfig &names,
                     const string &base_name, const RoPEConfig &rope_config = {}) {
         hidden_dim_ = hidden_dim;
@@ -125,27 +207,29 @@ public:
         return {o};
     }
 
-    vector<KVCache *> get_cache() {
+    vector<KVCache *> get_cache() override {
         return {&k_cache, &v_cache};
     }
 
-    vector<RoPE *> get_rope() {
+    vector<RoPE *> get_rope() override {
         return {&q_rope, &k_rope};
     }
 };
 
 class Llama3Block final : public Module {
-    Llama3Attention attention;
+    std::unique_ptr<Llama3Attn> attention;
     Llama3MLP mlp;
     Layer norm1;
     Layer norm2;
+
+    bool use_paged_attn;
 
 public:
     Llama3Block() = default;
     Llama3Block(int hidden_dim, int head_size, int kv_head_size, int ffn_hidden, RoPEType RoPE_type, float rope_theta, int max_position_embeddings, int cache_limit,
                 const Llama3NameConfig &names,
                 const Llama3Config &config,
-                const string &base_name) {
+                bool use_paged_attn, const string &base_name) : use_paged_attn(use_paged_attn){
         RoPEConfig rope_config;
         if (!config.rope_scaling.empty()) {
             rope_config["rope_theta"] = rope_theta;
@@ -153,15 +237,22 @@ public:
             rope_config["rope_scaling"] = config.rope_scaling;
         }
 
-        attention = Llama3Attention(hidden_dim, head_size, kv_head_size, RoPE_type, rope_theta,
-                                    max_position_embeddings, cache_limit, names, base_name + names._attn_base_name, rope_config);
+        if(!use_paged_attn)
+            attention = std::make_unique<Llama3NaiveAttention>(hidden_dim, head_size, kv_head_size, RoPE_type, rope_theta,
+                                        max_position_embeddings, cache_limit, names, base_name + names._attn_base_name, rope_config);
+        else
+            attention = std::make_unique<Llama3PagedAttention>(hidden_dim, head_size, kv_head_size, RoPE_type, rope_theta,
+                                                               max_position_embeddings, cache_limit, names, base_name + names._attn_base_name, rope_config);
         mlp = Llama3MLP(hidden_dim, ffn_hidden, names, base_name + names._ffn_base_name);
         norm1 = RMSNorm(hidden_dim, 1e-6, base_name + names._attn_norm_name);
         norm2 = RMSNorm(hidden_dim, 1e-6, base_name + names._ffn_norm_name);
     }
     vector<Tensor> Forward(vector<Tensor> inputs, vector<std::any> args) override {
         auto x = norm1(inputs[0]);
-        x = attention({x, x, x})[0];
+        if(!use_paged_attn)
+            x = (*attention)({x, x, x})[0];
+        else
+            x = (*attention)({x, x, x, inputs[1], inputs[2], inputs[3]})[0]; // x, x, x, out_loc, kv_indices, kv_cache
         auto tmp = x + inputs[0];
         x = norm2(tmp);
         x = mlp({x})[0];
@@ -169,8 +260,8 @@ public:
         return {x};
     }
 
-    Llama3Attention &get_attention() {
-        return attention;
+    Llama3Attn &get_attention() {
+        return *attention;
     }
 };
 
@@ -180,18 +271,21 @@ class Llama3Model final : public Module {
     Layer norm;
     Parameter lm_head;
 
+    bool use_paged_attn;
+
 public:
-    explicit Llama3Model(const Llama3Config &config) :
+    explicit Llama3Model(const Llama3Config &config, bool use_paged_attn = false) :
         Llama3Model(config.vocab_size, config.hidden_dim, config.head_size, config.num_key_value_heads, config.ffn_hidden, config.block_num,
                     config.RoPE_type, config.rope_theta, config.max_position_embeddings, config.cache_limit,
-                    config.names_config, config, config.names_config.blk_name) {
+                    config.names_config, config, config.names_config.blk_name, use_paged_attn) {
     }
     Llama3Model(int vocab_size, int hidden_dim, int head_size, int kv_head_size, int ffn_hidden, int block_num, RoPEType RoPE_type, float rope_theta, int max_position_embeddings, int cache_limit,
                 const Llama3NameConfig &names,
                 const Llama3Config &config,
-                const string &base_name) {
+                const string &base_name, bool use_paged_attn = false) : use_paged_attn(use_paged_attn){
         embedding = Embedding(vocab_size, hidden_dim, names.token_embd_name);
-        blocks = List<Llama3Block>(block_num, hidden_dim, head_size, kv_head_size, ffn_hidden, RoPE_type, rope_theta, max_position_embeddings, cache_limit, names, config, base_name);
+        blocks = List<Llama3Block>(block_num, hidden_dim, head_size, kv_head_size, ffn_hidden, RoPE_type, rope_theta, max_position_embeddings,
+                                   cache_limit, names, config, use_paged_attn, base_name);
         norm = RMSNorm(hidden_dim, 1e-6, names.post_norm_name);
         // TODO: tie_word_embeddings
         // this is a workaround
@@ -204,9 +298,14 @@ public:
     }
     vector<Tensor> Forward(vector<Tensor> inputs, vector<std::any> args) override {
         auto x = embedding(inputs[0]);
-        for (auto &block : blocks) {
-            x = block({x})[0];
+        for (int i = 0; i < blocks.size(); i++){
+            if (!use_paged_attn){
+                x = blocks[i]({x})[0];
+            }else{
+                x = blocks[i]({x, inputs[1], inputs[2], inputs[3 + i]})[0]; // x, out_loc, kv_indices, kv_cache
+            }
         }
+
         x = norm(x);
         x = Tensor::mm(x, lm_head().transpose(Chl::SEQUENCE, Chl::DIMENSION));
         return {x};
