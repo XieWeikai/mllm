@@ -31,7 +31,7 @@ void AttentionFP32(
     bool *mask, // the mask
     int num_qo_heads, int num_kv_heads, int head_dim,
 
-    // o: [num_qo_heads, head_dim]
+    // o: [..., num_qo_heads, head_dim]
     // output + i * num_qo_heads *head_dim to output + j * num_qo_heads *head_dim is the output of a batch
     // where i to j is a batch
     float *output

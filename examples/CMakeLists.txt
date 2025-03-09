@@ -57,6 +57,7 @@ macro(func_vlm_add_executable target)
 endmacro()
 
 func_llm_add_executable(mllm_benchmark)
+func_llm_add_executable(mllm_benchmark_attention)
 func_llm_add_executable(demo_llama)
 func_llm_add_executable(demo_tinyllama)
 func_llm_add_executable(demo_stablelm)
@@ -94,7 +95,6 @@ func_vlm_add_executable(demo_qwen2_vl)
 # func_vlm_add_executable(demo)
 
 # prefix-cache (experiemental)
-func_llm_add_executable(prefix_cache)
 func_llm_add_executable(prefix_cache_llama3)
 
 # QNN demo
