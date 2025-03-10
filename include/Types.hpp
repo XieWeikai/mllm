@@ -193,6 +193,23 @@ typedef __fp16 mllm_fp16_t;
 typedef uint16_t mllm_fp16_t;
 #endif
 
+#if !defined(_MSC_VER)
+#  if defined(__ARM_FEATURE_BF16) && __ARM_FEATURE_BF16
+#    include <arm_neon.h>
+typedef bfloat16_t mllm_bf16_t;
+#    define MLLM_BF16_ENABLED 1
+#  elif defined(__AVX512BF16__)
+typedef __bf16 mllm_bf16_t;
+#    define MLLM_BF16_ENABLED 1
+#  else
+typedef uint16_t mllm_bf16_t;
+#    define MLLM_BF16_ENABLED 0
+#  endif
+#else
+typedef uint16_t mllm_bf16_t;
+#    define MLLM_BF16_ENABLED 0
+#endif
+
 // #define MLLM_QKK_64
 #ifdef MLLM_QKK_64
 #define QK_K 64
