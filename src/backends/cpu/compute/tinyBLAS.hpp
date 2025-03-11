@@ -504,11 +504,6 @@ template <>
 inline __m512 assign(float scalar) {
     return _mm512_set1_ps(scalar);
 }
-
-template <>
-inline __m512bh assign(mllm_bf16_t scalar) {
-    return _mm512_set1_epi16(*(const short*)&scalar);
-}
 #endif // __AVX512F__
 
 #if defined(__ARM_NEON)

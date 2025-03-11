@@ -199,49 +199,5 @@ int main(){
         std::cout << std::string(140, '-') << std::endl;
     }
 
-//    AlignedAllocator allocator;
-//    const int alignment = 64;
-//
-//    int q_len = 128;
-//    int kv_len = 128;
-//    int head_dim = 64;
-//    int num_kv_heads = 8;
-//    int num_qo_heads = 32;
-//    int max_tokens = 1024;
-//    bool is_causal = false;
-//    bool *mask = nullptr;
-//
-//    auto queries = (float *)allocator.alloc_aligned(q_len * num_qo_heads * head_dim * sizeof(float), alignment);
-//    int qo_indptr[] = {0, q_len};
-//    auto kv_cache = (float *)allocator.alloc_aligned(max_tokens * 2 * num_kv_heads * head_dim * sizeof(float), alignment);
-//    auto kv_indices = (int *)allocator.alloc_aligned(kv_len * sizeof(int), alignment);
-//    int kv_indptr[] = {0, kv_len};
-//    auto attn_out = (float *)allocator.alloc_aligned(q_len * num_qo_heads * head_dim * sizeof(float), alignment);
-//
-//    randn(queries, q_len * num_qo_heads * head_dim);
-//    randn(kv_cache, max_tokens * 2 * num_kv_heads * head_dim);
-//    for (int i = 0; i < kv_len; i++)
-//        kv_indices[i] = i;
-//
-//    auto start = std::chrono::high_resolution_clock::now();
-//    AttentionFP32(
-//        queries, qo_indptr, 2,
-//        kv_cache,
-//        kv_indices, kv_indptr, 2,
-//        is_causal,
-//        mask,
-//        num_qo_heads, num_kv_heads, head_dim,
-//        attn_out);
-//    auto end = std::chrono::high_resolution_clock::now();
-//    auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-//    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-//    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-//    std::cout << "Time: " << milliseconds << "ms" << std::endl;
-//    std::cout << "Time: " << microseconds << "us" << std::endl;
-//    std::cout << "Time: " << nanoseconds << "ns" << std::endl;
-//    auto FLOPS = 4 * q_len * kv_len * num_qo_heads * head_dim;
-//    auto GFLOPS = FLOPS / (milliseconds * 1e6);
-//    std::cout << "GFLOPS: " << GFLOPS << std::endl;
-
     return 0;
 }

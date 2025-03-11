@@ -34,17 +34,18 @@ template <int RK, typename D, typename V, typename TKV, typename TQ, typename TO
 class Attention{
 public:
     Attention(
-        TQ *queries, int *qo_indptr, int qo_indptr_length,
-        TKV *kv_cache, int *kv_indices, int *kv_indptr, int kv_indptr_length,
-        bool is_causal,
-        bool *mask,
-        int num_qo_heads, int num_kv_heads, int head_dim,
-        TO *output
+        const TQ *queries, const int *qo_indptr, int qo_indptr_length,
+        const TKV *kv_cache, const int *kv_indices, const int *kv_indptr, const int kv_indptr_length,
+        const bool is_causal,
+        const bool *mask,
+        const int num_qo_heads, const int num_kv_heads, const int head_dim,
+        TO *const output
     ): queries(queries), qo_indptr(qo_indptr), qo_indptr_length(qo_indptr_length),
        kv_cache(kv_cache), kv_indices(kv_indices), kv_indptr(kv_indptr), kv_indptr_length(kv_indptr_length),
        is_causal(is_causal), mask(mask), num_qo_heads(num_qo_heads), num_kv_heads(num_kv_heads), head_dim(head_dim),
        output(output)
     {
+        assert(head_dim % RK == 0);
         o_stride = q_stride = num_qo_heads * head_dim;
         kv_stride = 2 * num_kv_heads * head_dim;
         k_cache = kv_cache;
@@ -60,7 +61,7 @@ public:
         constexpr int BM = 4;
         constexpr int BN = 3;
 #endif
-        bool *local_mask = mask;
+        const bool *local_mask = mask;
         for (int batch_idx = 0; batch_idx < qo_indptr_length - 1; batch_idx++) {
             int q_start = qo_indptr[batch_idx];
             int q_end = qo_indptr[batch_idx + 1];
@@ -73,18 +74,65 @@ public:
             for (int head_idx = 0; head_idx < num_qo_heads; head_idx++) {
                 auto query_head = queries + q_start * q_stride + head_idx * head_dim;
                 auto output_head = output + q_start * o_stride + head_idx * head_dim;
+
+                auto kv_head_idx = head_idx * num_kv_heads / num_qo_heads;
+                auto k_cache_head = k_cache + kv_head_idx * head_dim;
+                auto v_cache_head = v_cache + kv_head_idx * head_dim;
+
                 for(int q_i = 0; q_i < q_len; q_i += BM){
-                    int real_BM = std::min(BM, q_end - q_i);
+                    int real_BM = std::min(BM, q_len - q_i);
 
-                    computeO<real_BM, BN>(
-                        query_head + q_i * q_stride,
-                        k_cache, v_cache,
-                        output_head + q_i * o_stride,
-                        kv_start, kv_end,
-                        local_mask + q_i * kv_len,
-                        q_len, q_i
-                        );
+                    switch (real_BM) {
+                        case 4:
+                            computeO<4, BN>(
+                                query_head + q_i * q_stride,
+                                k_cache_head, v_cache_head,
+                                output_head + q_i * o_stride,
+                                kv_start, kv_end,
+                                local_mask + q_i * kv_len,
+                                q_len, q_i
+                            );
+                            break;
+                        case 3:
+                            computeO<3, BN>(
+                                query_head + q_i * q_stride,
+                                k_cache_head, v_cache_head,
+                                output_head + q_i * o_stride,
+                                kv_start, kv_end,
+                                local_mask + q_i * kv_len,
+                                q_len, q_i
+                            );
+                            break;
+                        case 2:
+                            computeO<2, BN>(
+                                query_head + q_i * q_stride,
+                                k_cache_head, v_cache_head,
+                                output_head + q_i * o_stride,
+                                kv_start, kv_end,
+                                local_mask + q_i * kv_len,
+                                q_len, q_i
+                            );
+                            break;
+                        case 1:
+                            computeO<1, BN>(
+                                query_head + q_i * q_stride,
+                                k_cache_head, v_cache_head,
+                                output_head + q_i * o_stride,
+                                kv_start, kv_end,
+                                local_mask + q_i * kv_len,
+                                q_len, q_i
+                            );
+                            break;
 
+                    }
+//                    computeO<real_BM, BN>(
+//                        query_head + q_i * q_stride,
+//                        k_cache_head, v_cache_head,
+//                        output_head + q_i * o_stride,
+//                        kv_start, kv_end,
+//                        local_mask + q_i * kv_len,
+//                        q_len, q_i
+//                        );
                 }
             }
             local_mask += q_len * kv_len;
@@ -98,7 +146,7 @@ private:
     // q: start addr of q of a certain head
     // ii: the q is the ii-th query in the batch (q_len queries totally)
     template <int BM, int BN>
-    inline void computeO(TQ *q, TKV *k, TKV *v, TO *o, int kv_i, int kv_j, bool *local_mask, int q_len, int ii) {
+    inline void computeO(const TQ *q, const TKV *k, const TKV *v, TO *o, int kv_i, int kv_j, const bool *local_mask, int q_len, int ii) {
         // TODO: for simplicity, we assume BM = RM and BN = RN, but later BM and BN should be bigger than RM and RN
         float S[BM * BN]; // attention scores
         float max_score[BM];
@@ -122,7 +170,7 @@ private:
             // compute the actual BN
             auto RN = std::min(BN, kv_len - jj);
             // compute S
-            if (!r_gemm<BM, RN>(q, k + kv_indices[kv_i + jj] * kv_stride, S, local_mask, kv_len, q_len, ii, jj))
+            if (!_r_gemm<BM>(RN, q, k + kv_indices[kv_i + jj] * kv_stride, S, local_mask, kv_len, q_len, ii, jj))
                 continue; // this block is all invalid
 
             // scale S and find max score
@@ -150,7 +198,7 @@ private:
             }
 
             // update o and exp_sum
-            r_gemm_SV<BM, RN>(S, v, o, kv_i + jj);
+            _r_gemm_SV<BM>(RN, S, v, o, kv_i + jj);
 
             for (int i = 0; i < BM; i++){
                 for (int j = 0; j < RN; j++){
@@ -174,6 +222,32 @@ private:
         }
     }
 
+    template <int RM>
+    inline bool _r_gemm(int RN, const TQ *A, const TKV *B, float *C, const bool *local_mask, int kv_len, int q_len, int ii, int jj){
+        switch (RN) {
+        case 1:
+            return r_gemm<RM, 1>(A, B, C, local_mask, kv_len, q_len, ii, jj);
+            break;
+        case 2:
+            return r_gemm<RM, 2>(A, B, C, local_mask, kv_len, q_len, ii, jj);
+            break;
+        case 3:
+            return r_gemm<RM, 3>(A, B, C, local_mask, kv_len, q_len, ii, jj);
+            break;
+        case 4:
+            return r_gemm<RM, 4>(A, B, C, local_mask, kv_len, q_len, ii, jj);
+            break;
+        case 5:
+            return r_gemm<RM, 5>(A, B, C, local_mask, kv_len, q_len, ii, jj);
+            break;
+        case 6:
+            return r_gemm<RM, 6>(A, B, C, local_mask, kv_len, q_len, ii, jj);
+            break;
+        default:
+            assert(false);
+        }
+    }
+
     // micro kernel to compute C = A * B^T
     // A: [RM, head_dim]  B: [RN, head_dim]  C: [RM, RN]
     // this is a kernel done in registers
@@ -183,7 +257,7 @@ private:
     // B is part of keys
     // C is part of attn scores
     template <int RM, int RN>
-    inline bool r_gemm(TQ *A, TKV *B, float *C, bool *local_mask, int kv_len, int q_len, int ii, int jj){
+    inline bool r_gemm(const TQ *A, const TKV *B, float *C, const bool *local_mask, int kv_len, int q_len, int ii, int jj){
         // TODO: maybe explicitly unroll the loop will be faster?
         D Cv[RM][RN] = {};
 
@@ -252,13 +326,39 @@ private:
         return !all_invalid;
     }
 
+    template <int RM>
+    inline void _r_gemm_SV(int RN, float *S, const TKV *v, TO *o, int i){
+        switch (RN) {
+        case 1:
+            r_gemm_SV<RM, 1>(S, v, o, i);
+            break;
+        case 2:
+            r_gemm_SV<RM, 2>(S, v, o, i);
+            break;
+        case 3:
+            r_gemm_SV<RM, 3>(S, v, o, i);
+            break;
+        case 4:
+            r_gemm_SV<RM, 4>(S, v, o, i);
+            break;
+        case 5:
+            r_gemm_SV<RM, 5>(S, v, o, i);
+            break;
+        case 6:
+            r_gemm_SV<RM, 6>(S, v, o, i);
+            break;
+        default:
+            assert(false);
+        }
+    }
+
     // compute S * V in registers
     // S is a small tile of the attention scores
     // S: [RM, RN]
     // i: start of kv_indices
     // v: start addr of v of a certain head
     template <int RM, int RN>
-    inline void r_gemm_SV(float *S, TKV *v, TO *o, int i){
+    inline void r_gemm_SV(float *S, const TKV *v, TO *o, int i){
         for (int k = 0;k < head_dim; k += RK){
             V vv[RN];
             V dst[RN] = {};
@@ -279,38 +379,89 @@ private:
     }
 
     // [n, num_qo_head, head_dim]
-    TQ *queries;
+    const TQ *queries;
     // e.g. qo_indptr_length = 4
     // qo_indptr = [0, 2, 5, 7]
     // then q0 q1 is the first batch of queries
     // q2 q3 q4 is the second batch of queries
     // q5 q6 is the third batch of queries
     // where the start address of q_i is queries + i * num_qo_head * head_dim
-    int *qo_indptr, qo_indptr_length;
+    const int *qo_indptr, qo_indptr_length;
     // [max_tokens, 2, num_kv_head, head_dim]  in the dim=1, 0 means key, 1 means value
-    TKV *kv_cache;
+    const TKV *kv_cache;
     // e.g. kv_indptr_length = 4
     // kv_indptr = [0, 4, 8, 16]
     // then the indices of the first batch of keys and values are kv_indices[0:4)
     // the indices of the second batch of keys and values are kv_indices[4:8)
     // ...
-    int *kv_indices, *kv_indptr, kv_indptr_length;
-    bool is_causal;
+    const int *kv_indices, *kv_indptr, kv_indptr_length;
+    const bool is_causal;
     // length can be inferred from qo_indptr and kv_indptr
     // assume a batch with qo_len queries and kv_len keys and values
     // then this mask should be of shape [qo_len, kv_len], i.e. [qo_len * kv_len]
     // and mask[i * kv_len + j] is true, then the ith query can only attend to the jth keys and values in this batch
     // the mask simply concat all the masks of all batches
-    bool *mask;
-    int num_qo_heads, num_kv_heads, head_dim;
+    const bool *mask;
+    const int num_qo_heads, num_kv_heads, head_dim;
     // o: [..., num_qo_head, head_dim]
     TO *output;
 
     int kv_stride, q_stride, o_stride;
-    TKV *k_cache, *v_cache;
+    const TKV *k_cache, *v_cache;
 
     float inv_sqrt_head_dim;
 };
+
+// support MHA and GQA
+void AttentionFP32_v2(
+    // e.g. qo_indptr_length = 4
+    // qo_indptr = [0, 2, 5, 7]
+    // then q0 q1 is the first batch of queries
+    // q2 q3 q4 is the second batch of queries
+    // q5 q6 is the third batch of queries
+    // where the start address of q_i is queries + i * num_qo_head * head_dim
+    float *queries, const int *qo_indptr, int qo_indptr_length,
+    float *kv_cache, // [max_tokens, 2, num_kv_head, head_dim]  in the dim=1, 0 means key, 1 means value
+    // e.g. kv_indptr_length = 4
+    // kv_indptr = [0, 4, 8, 16]
+    // then the indices of the first batch of keys and values are kv_indices[0:4)
+    // the indices of the second batch of keys and values are kv_indices[4:8)
+    // ...
+    int *kv_indices, const int *kv_indptr, int kv_indptr_length,
+    bool is_causal, // only used when mask is nullptr
+
+    // length can be inferred from qo_indptr and kv_indptr
+    // assume a batch with qo_len queries and kv_len keys and values
+    // then this mask should be of shape [qo_len, kv_len], i.e. [qo_len * kv_len]
+    // and mask[i * kv_len + j] is true, then the ith query can only attend to the jth keys and values in this batch
+    // the mask simply concat all the masks of all batches
+    bool *mask, // the mask
+    int num_qo_heads, int num_kv_heads, int head_dim,
+
+    // o: [num_qo_heads, head_dim]
+    // output + i * num_qo_heads *head_dim to output + j * num_qo_heads *head_dim is the output of a batch
+    // where i to j is a batch
+    float *output
+){
+#if defined(__AVX512F__)
+    Attention<16, __m512, __m512, float, float, float> att(queries, qo_indptr, qo_indptr_length,
+                                                            kv_cache, kv_indices, kv_indptr, kv_indptr_length,
+                                                            is_causal, mask, num_qo_heads, num_kv_heads, head_dim, output);
+    att.compute();
+#elif defined(__AVX__) || defined(__AVX2__)
+    Attention<8, __m256, __m256, float, float, float> att(queries, qo_indptr, qo_indptr_length,
+                                                           kv_cache, kv_indices, kv_indptr, kv_indptr_length,
+                                                           is_causal, mask, num_qo_heads, num_kv_heads, head_dim, output);
+    attn.compute();
+#elif defined(__ARM_NEON)
+    Attention<4, float32x4_t, float32x4_t, float, float, float> att(queries, qo_indptr, qo_indptr_length,
+                                                                     kv_cache, kv_indices, kv_indptr, kv_indptr_length,
+                                                                     is_causal, mask, num_qo_heads, num_kv_heads, head_dim, output);
+    attn.compute();
+#else
+    assert(false);
+#endif
+}
 
 // support MHA and GQA
 void AttentionFP32(
