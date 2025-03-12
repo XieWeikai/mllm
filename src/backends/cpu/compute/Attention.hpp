@@ -65,7 +65,8 @@ void AttentionFP32(
     // o: [..., num_qo_heads, head_dim]
     // output + i * num_qo_heads *head_dim to output + j * num_qo_heads *head_dim is the output of a batch
     // where i to j is a batch
-    float *output
+    float *output,
+    int thread_cnt = 4
 );
 
 // this is a single head attention

@@ -158,6 +158,7 @@ int main(int argc, char **argv){
         req.tokens.pop_back(); // pop last token (last token has not run through the model)
         radix_cache.cacheReq(req);
 
+        cout << endl;
         model.profiling();
     }
 

@@ -609,7 +609,8 @@ void AttentionFP32_v2(
     // o: [num_qo_heads, head_dim]
     // output + i * num_qo_heads *head_dim to output + j * num_qo_heads *head_dim is the output of a batch
     // where i to j is a batch
-    float *output
+    float *output,
+    int thread_count
 ){
 #if defined(__AVX512F__)
     Attention<16, __m512, __m512, float, float, float> att(queries, qo_indptr, qo_indptr_length,
@@ -638,7 +639,7 @@ void AttentionFP32(
     // then q0 q1 is the first batch of queries
     // q2 q3 q4 is the second batch of queries
     // q5 q6 is the third batch of queries
-    // where the start address of q_i is queries + i * num_qo_head * head_dim
+    // where the start address of q_i is queries + qo_indptr[i] * num_qo_head * head_dim
     float *queries, const int *qo_indptr, int qo_indptr_length,
     float *kv_cache, // [max_tokens, 2, num_kv_head, head_dim]  in the dim=1, 0 means key, 1 means value
     // e.g. kv_indptr_length = 4
@@ -657,10 +658,11 @@ void AttentionFP32(
     bool *mask, // the mask
     int num_qo_heads, int num_kv_heads, int head_dim,
 
-    // o: [num_qo_heads, head_dim]
+    // o: [..., num_qo_heads, head_dim]
     // output + i * num_qo_heads *head_dim to output + j * num_qo_heads *head_dim is the output of a batch
     // where i to j is a batch
-    float *output
+    float *output,
+    int thread_cnt
 ){
     int q_stride = num_qo_heads * head_dim;
     int kv_stride = 2 * num_kv_heads * head_dim;
@@ -668,51 +670,55 @@ void AttentionFP32(
     float *k_cache = kv_cache;
     float *v_cache = kv_cache + num_kv_heads * head_dim;
 
-    // Iterate over each batch
-    bool *batch_mask = mask;
-    for (int batch_idx = 0; batch_idx < qo_indptr_length - 1; batch_idx++) {
-        // Get the start and end indices for queries in this batch
-        int q_start = qo_indptr[batch_idx];
-        int q_end = qo_indptr[batch_idx + 1];
-        int q_length = q_end - q_start;
+    // Precompute mask offsets
+    int* mask_offsets = nullptr;
+    if (mask) {
+        mask_offsets = new int[qo_indptr_length];
+        mask_offsets[0] = 0;
+        for (int i = 0; i < qo_indptr_length - 1; ++i) {
+            int q_len = qo_indptr[i+1] - qo_indptr[i];
+            int kv_len = kv_indptr[i+1] - kv_indptr[i];
+            mask_offsets[i+1] = mask_offsets[i] + q_len * kv_len;
+        }
+    }
 
-        // Get the start and end indices for keys and values in this batch
-        int kv_start = kv_indptr[batch_idx];
-        int kv_end = kv_indptr[batch_idx + 1];
-        int kv_length = kv_end - kv_start;
+// 合并batch和head的并行
+#pragma omp parallel for collapse(2) num_threads(thread_cnt) \
+        schedule(dynamic) // 动态调度优化负载均衡
+    for (int batch_idx = 0; batch_idx < qo_indptr_length - 1; ++batch_idx) {
+        for (int head_idx = 0; head_idx < num_qo_heads; ++head_idx) {
+            // Batch相关参数
+            int q_start = qo_indptr[batch_idx];
+            int q_end = qo_indptr[batch_idx + 1];
+            int q_length = q_end - q_start;
 
+            int kv_start = kv_indptr[batch_idx];
+            int kv_end = kv_indptr[batch_idx + 1];
+            int kv_length = kv_end - kv_start;
 
-        // Iterate over each query head
-        for (int head_idx = 0; head_idx < num_qo_heads; head_idx++) {
-            // Calculate the address of the queries for this head
+            // Head相关参数
+            int kv_head_idx = head_idx * num_kv_heads / num_qo_heads;
             float *query_head = queries + q_start * q_stride + head_idx * head_dim;
-
-            // considering GQA
-            assert (num_qo_heads % num_kv_heads == 0);
-            int kv_head_idx =  head_idx * num_kv_heads / num_qo_heads;  // head_idx / (num_qo_heads / num_kv_heads);
-
-            // Calculate the address of the keys and values for this head
-            float *k_cache_head = k_cache + kv_head_idx * head_dim; // TODO: this can be precomputed
-            float *v_cache_head = v_cache + kv_head_idx * head_dim; // // TODO: this can be precomputed
-
-            // Calculate the address of the output for this head
+            float *k_cache_head = k_cache + kv_head_idx * head_dim;
+            float *v_cache_head = v_cache + kv_head_idx * head_dim;
             float *output_head = output + q_start * o_stride + head_idx * head_dim;
 
-            // Call AttentionFP32Head for this head
+            // 处理当前batch和head
             AttentionFP32Head(
                 query_head, q_stride, q_length,
                 k_cache_head, kv_stride,
                 v_cache_head, kv_stride,
                 kv_indices + kv_start, kv_length,
                 is_causal,
-                mask ? batch_mask : nullptr,
+                mask ? mask + mask_offsets[batch_idx] : nullptr,
                 head_dim,
                 output_head, o_stride
             );
         }
+    }
 
-        // Move the mask pointer to the next batch
-        batch_mask += q_length * kv_length;
+    if (mask_offsets) {
+        delete[] mask_offsets;
     }
 }
 

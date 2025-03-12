@@ -43,7 +43,8 @@ ErrorCode CPUAttention::execute(vector<shared_ptr<Tensor>> inputs, vector<shared
         causal_,
         (bool *)mask_ptr,
         num_qo_heads_, num_kv_heads_, head_dim_,
-        (float*) outputs[0]->rawHostPtr()
+        (float*) outputs[0]->rawHostPtr(),
+        thread_count
     );
 
     return Op::execute(inputs, outputs);

@@ -86,9 +86,9 @@ using AttentionFunc = std::function<void(
     bool is_causal,
     bool* mask,
     int num_qo_heads, int num_kv_heads, int head_dim,
-    float* attn_out)>;
+    float* attn_out, int thread_count)>;
 
-void Benchmark(AttentionFunc attention_func, int q_len, int kv_len, int head_dim, int num_kv_heads, int num_qo_heads, int max_tokens, bool is_causal) {
+void Benchmark(AttentionFunc attention_func, int q_len, int kv_len, int head_dim, int num_kv_heads, int num_qo_heads, int max_tokens, bool is_causal, int thread) {
     const int warmup_times = 5;
     const int infer_times = 10;
 
@@ -118,7 +118,7 @@ void Benchmark(AttentionFunc attention_func, int q_len, int kv_len, int head_dim
             is_causal,
             nullptr, // mask
             num_qo_heads, num_kv_heads, head_dim,
-            attn_out);
+            attn_out, thread);
     }
 
     // Run and measure time
@@ -131,7 +131,7 @@ void Benchmark(AttentionFunc attention_func, int q_len, int kv_len, int head_dim
             is_causal,
             nullptr, // mask
             num_qo_heads, num_kv_heads, head_dim,
-            attn_out);
+            attn_out, thread);
     }
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -175,9 +175,12 @@ void print_table_head(){
 }
 
 int main(){
+    const int thread = 4;
+
     // Test different configurations
     std::vector<std::tuple<int, int, int, int, int, int, bool>> test_cases = {
         // q_len, kv_len, head_dim, num_kv_heads, num_qo_heads, max_tokens, is_causal
+        {  32,    32,     64,       8,            32,           1024,       false},
         {  64,    64,     64,       8,            32,           1024,       false},
         {  128,   128,    64,       8,            32,           1024,       false},
         {  256,   256,    64,       8,            32,           1024,       false},
@@ -187,6 +190,7 @@ int main(){
     // Test different Attention implementations
     std::vector<std::pair<std::string, AttentionFunc>> attention_funcs = {
         {"AttentionFP32", AttentionFP32},
+//        {"v2", AttentionFP32_v2},
     };
 
     for (const auto& func : attention_funcs) {
@@ -194,7 +198,7 @@ int main(){
         print_table_head();
         for (const auto& test_case : test_cases) {
             auto [q_len, kv_len, head_dim, num_kv_heads, num_qo_heads, max_tokens, is_causal] = test_case;
-            Benchmark(func.second, q_len, kv_len, head_dim, num_kv_heads, num_qo_heads, max_tokens, is_causal);
+            Benchmark(func.second, q_len, kv_len, head_dim, num_kv_heads, num_qo_heads, max_tokens, is_causal, thread);
         }
         std::cout << std::string(140, '-') << std::endl;
     }
