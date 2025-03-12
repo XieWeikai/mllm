@@ -10,6 +10,179 @@
 #include "Attention.hpp"
 #include "tinyBLAS.hpp"
 
+#include <stddef.h>
+#include <stdint.h>
+
+#define USE_SIMD
+
+#if defined(__SSE3__)
+#include <pmmintrin.h>
+#elif defined(__SSE__)
+#include <xmmintrin.h>
+#endif
+
+#if defined(__AVX__)
+#include <immintrin.h>
+#endif
+
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
+
+// 水平求和辅助函数
+#if defined(__SSE__) || defined(__AVX__) || defined(__AVX512F__)
+static inline float hsum_ps_sse3(__m128 v) {
+    __m128 shuf = _mm_movehdup_ps(v);
+    __m128 sums = _mm_add_ps(v, shuf);
+    shuf = _mm_movehl_ps(shuf, sums);
+    sums = _mm_add_ss(sums, shuf);
+    return _mm_cvtss_f32(sums);
+}
+#endif
+
+#if defined(__AVX__)
+static inline float hsum_ps_avx(__m256 v) {
+    __m128 vlow  = _mm256_castps256_ps128(v);
+    __m128 vhigh = _mm256_extractf128_ps(v, 1);
+    vlow  = _mm_add_ps(vlow, vhigh);
+    return hsum_ps_sse3(vlow);
+}
+#endif
+
+#if defined(__ARM_NEON)
+static inline float hsum_ps_neon(float32x4_t v) {
+    float32x2_t sum = vadd_f32(vget_high_f32(v), vget_low_f32(v));
+    return vget_lane_f32(vpadd_f32(sum, sum), 0);
+}
+#endif
+
+#if defined(USE_SIMD)
+
+// 向量点积优化
+void vec_dot_fp32(const float* a, const float* b, int dim, float* output) {
+    float sum = 0.0f;
+    int i = 0;
+
+#if defined(__AVX512F__)
+    __m512 sum512 = _mm512_setzero_ps();
+    for (; i <= dim - 16; i += 16) {
+        __m512 va = _mm512_loadu_ps(a + i);
+        __m512 vb = _mm512_loadu_ps(b + i);
+        sum512 = _mm512_fmadd_ps(va, vb, sum512);
+    }
+    sum += _mm512_reduce_add_ps(sum512);
+#elif defined(__AVX__)
+    __m256 sum256 = _mm256_setzero_ps();
+    for (; i <= dim - 8; i += 8) {
+        __m256 va = _mm256_loadu_ps(a + i);
+        __m256 vb = _mm256_loadu_ps(b + i);
+        sum256 = _mm256_add_ps(sum256, _mm256_mul_ps(va, vb));
+    }
+    sum += hsum_ps_avx(sum256);
+#elif defined(__SSE__)
+    __m128 sum128 = _mm_setzero_ps();
+    for (; i <= dim - 4; i += 4) {
+        __m128 va = _mm_loadu_ps(a + i);
+        __m128 vb = _mm_loadu_ps(b + i);
+        sum128 = _mm_add_ps(sum128, _mm_mul_ps(va, vb));
+    }
+    sum += hsum_ps_sse3(sum128);
+#elif defined(__ARM_NEON)
+    float32x4_t sumv = vdupq_n_f32(0.0f);
+    for (; i <= dim - 4; i += 4) {
+        float32x4_t va = vld1q_f32(a + i);
+        float32x4_t vb = vld1q_f32(b + i);
+        sumv = vmlaq_f32(sumv, va, vb);
+    }
+    sum += hsum_ps_neon(sumv);
+#endif
+
+    // 处理剩余元素
+    for (; i < dim; ++i) {
+        sum += a[i] * b[i];
+    }
+
+    *output = sum;
+}
+
+// 向量缩放优化
+void scale_fp32(const float* a, int dim, float scale, float* output) {
+    int i = 0;
+
+#if defined(__AVX512F__)
+    __m512 scale512 = _mm512_set1_ps(scale);
+    for (; i <= dim - 16; i += 16) {
+        __m512 va = _mm512_loadu_ps(a + i);
+        _mm512_storeu_ps(output + i, _mm512_mul_ps(va, scale512));
+    }
+#elif defined(__AVX__)
+    __m256 scale256 = _mm256_set1_ps(scale);
+    for (; i <= dim - 8; i += 8) {
+        __m256 va = _mm256_loadu_ps(a + i);
+        _mm256_storeu_ps(output + i, _mm256_mul_ps(va, scale256));
+    }
+#elif defined(__SSE__)
+    __m128 scale128 = _mm_set1_ps(scale);
+    for (; i <= dim - 4; i += 4) {
+        __m128 va = _mm_loadu_ps(a + i);
+        _mm_storeu_ps(output + i, _mm_mul_ps(va, scale128));
+    }
+#elif defined(__ARM_NEON)
+    float32x4_t scalev = vdupq_n_f32(scale);
+    for (; i <= dim - 4; i += 4) {
+        float32x4_t va = vld1q_f32(a + i);
+        vst1q_f32(output + i, vmulq_f32(va, scalev));
+    }
+#endif
+
+    // 处理剩余元素
+    for (; i < dim; ++i) {
+        output[i] = a[i] * scale;
+    }
+}
+
+// 向量累加优化
+void add_row_fp32(const float* a, int dim, float scale, float* output) {
+    int i = 0;
+
+#if defined(__AVX512F__)
+    __m512 scale512 = _mm512_set1_ps(scale);
+    for (; i <= dim - 16; i += 16) {
+        __m512 va = _mm512_loadu_ps(a + i);
+        __m512 vo = _mm512_loadu_ps(output + i);
+        _mm512_storeu_ps(output + i, _mm512_fmadd_ps(va, scale512, vo));
+    }
+#elif defined(__AVX__)
+    __m256 scale256 = _mm256_set1_ps(scale);
+    for (; i <= dim - 8; i += 8) {
+        __m256 va = _mm256_loadu_ps(a + i);
+        __m256 vo = _mm256_loadu_ps(output + i);
+        _mm256_storeu_ps(output + i, _mm256_add_ps(vo, _mm256_mul_ps(va, scale256)));
+    }
+#elif defined(__SSE__)
+    __m128 scale128 = _mm_set1_ps(scale);
+    for (; i <= dim - 4; i += 4) {
+        __m128 va = _mm_loadu_ps(a + i);
+        __m128 vo = _mm_loadu_ps(output + i);
+        _mm_storeu_ps(output + i, _mm_add_ps(vo, _mm_mul_ps(va, scale128)));
+    }
+#elif defined(__ARM_NEON)
+    float32x4_t scalev = vdupq_n_f32(scale);
+    for (; i <= dim - 4; i += 4) {
+        float32x4_t va = vld1q_f32(a + i);
+        float32x4_t vo = vld1q_f32(output + i);
+        vst1q_f32(output + i, vmlaq_f32(vo, va, scalev));
+    }
+#endif
+
+    // 处理剩余元素
+    for (; i < dim; ++i) {
+        output[i] += a[i] * scale;
+    }
+}
+
+#else
+
 void vec_dot_fp32(const float *a, const float *b, int dim, float *output){
     float sum = 0;
     for(int i = 0; i < dim; i++){
@@ -29,6 +202,7 @@ void add_row_fp32(const float *a, int dim, float scale, float *output){
         output[i] += a[i] * scale;
     }
 }
+#endif
 
 template <int RK, typename D, typename V, typename TKV, typename TQ, typename TO>
 class Attention{
@@ -83,56 +257,50 @@ public:
                     int real_BM = std::min(BM, q_len - q_i);
 
                     switch (real_BM) {
-                        case 4:
-                            computeO<4, BN>(
-                                query_head + q_i * q_stride,
-                                k_cache_head, v_cache_head,
-                                output_head + q_i * o_stride,
-                                kv_start, kv_end,
-                                local_mask + q_i * kv_len,
-                                q_len, q_i
-                            );
-                            break;
-                        case 3:
-                            computeO<3, BN>(
-                                query_head + q_i * q_stride,
-                                k_cache_head, v_cache_head,
-                                output_head + q_i * o_stride,
-                                kv_start, kv_end,
-                                local_mask + q_i * kv_len,
-                                q_len, q_i
-                            );
-                            break;
-                        case 2:
-                            computeO<2, BN>(
-                                query_head + q_i * q_stride,
-                                k_cache_head, v_cache_head,
-                                output_head + q_i * o_stride,
-                                kv_start, kv_end,
-                                local_mask + q_i * kv_len,
-                                q_len, q_i
-                            );
-                            break;
-                        case 1:
-                            computeO<1, BN>(
-                                query_head + q_i * q_stride,
-                                k_cache_head, v_cache_head,
-                                output_head + q_i * o_stride,
-                                kv_start, kv_end,
-                                local_mask + q_i * kv_len,
-                                q_len, q_i
-                            );
-                            break;
+                    case 4:
+                        computeO<4, BN>(
+                            query_head + q_i * q_stride,
+                            k_cache_head, v_cache_head,
+                            output_head + q_i * o_stride,
+                            kv_start, kv_end,
+                            mask ? (local_mask + q_i * kv_len) : nullptr,
+                            q_len, q_i
+                        );
+                        break;
 
+                    case 3:
+                        computeO<3, BN>(
+                            query_head + q_i * q_stride,
+                            k_cache_head, v_cache_head,
+                            output_head + q_i * o_stride,
+                            kv_start, kv_end,
+                            mask ? (local_mask + q_i * kv_len) : nullptr,
+                            q_len, q_i
+                        );
+                        break;
+
+                    case 2:
+                        computeO<2, BN>(
+                            query_head + q_i * q_stride,
+                            k_cache_head, v_cache_head,
+                            output_head + q_i * o_stride,
+                            kv_start, kv_end,
+                            mask ? (local_mask + q_i * kv_len) : nullptr,
+                            q_len, q_i
+                        );
+                        break;
+
+                    case 1:
+                        computeO<1, BN>(
+                            query_head + q_i * q_stride,
+                            k_cache_head, v_cache_head,
+                            output_head + q_i * o_stride,
+                            kv_start, kv_end,
+                            mask ? (local_mask + q_i * kv_len) : nullptr,
+                            q_len, q_i
+                        );
+                        break;
                     }
-//                    computeO<real_BM, BN>(
-//                        query_head + q_i * q_stride,
-//                        k_cache_head, v_cache_head,
-//                        output_head + q_i * o_stride,
-//                        kv_start, kv_end,
-//                        local_mask + q_i * kv_len,
-//                        q_len, q_i
-//                        );
                 }
             }
             local_mask += q_len * kv_len;
@@ -537,7 +705,7 @@ void AttentionFP32(
                 v_cache_head, kv_stride,
                 kv_indices + kv_start, kv_length,
                 is_causal,
-                batch_mask,
+                mask ? batch_mask : nullptr,
                 head_dim,
                 output_head, o_stride
             );
