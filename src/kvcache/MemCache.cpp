@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_set>
+#include <assert.h>
 
 #include "MemCache.hpp"
 
@@ -210,6 +211,7 @@ int RadixCache::_insert(TreeNode *node, const int *key_l, const int *key_r, cons
         lru->putFront(lru_node);
 
         node->children[id] = std::move(new_node);
+        lru->setEvictable(node->lru_node, false); // not leaf anymore not evictable
         return 0;
     }
 
@@ -236,6 +238,7 @@ int RadixCache::_insert(TreeNode *node, const int *key_l, const int *key_r, cons
 
             int new_child_id = new_child->key[0];
             new_node->children[new_child_id] = std::move(new_child);
+            lru->setEvictable(new_node->lru_node, false); // not leaf anymore not evictable
         }
 
         return prefix_len;
@@ -315,6 +318,7 @@ void RadixCache::deleteLeaf(TreeNode *node) {
 }
 
 void RadixCache::cacheReq(Req &req) {
+    assert(req.tokens.size() == req.kv_indices.size());
     insert(req.tokens, req.kv_indices);
 }
 
@@ -598,11 +602,9 @@ void RadixCache::saveDot(const char* filename) {
         << "    style=filled;\n"
         << "    color=lightgrey;\n";
 
-    std::function<void(TreeNode*, int)> traverseTree = [&](TreeNode* node, int parentId) {
-        int nodeId = reinterpret_cast<intptr_t>(node);
-
+    std::function<void(TreeNode*, TreeNode *)> traverseTree = [&](TreeNode *node, TreeNode *parent) {
         // 生成树节点
-        out << "    tree_" << nodeId << " [label=\"";
+        out << "    tree_" << node << " [label=\"";
         out << "Key: [";
         for(size_t i=0; i<node->key.size(); ++i) {
             if(i>0) out << ", ";
@@ -615,18 +617,18 @@ void RadixCache::saveDot(const char* filename) {
         out << "];\n";
 
         // 连接父节点
-        if(parentId != -1) {
-            out << "    tree_" << parentId << " -> tree_" << nodeId
+        if(parent) {
+            out << "    tree_" << parent << " -> tree_" << node
                 << ";\n";
         }
 
         // 递归处理子节点
         for(auto& child : node->children) {
-            traverseTree(child.second.get(), nodeId);
+            traverseTree(child.second.get(), node);
         }
     };
 
-    traverseTree(root.get(), -1);
+    traverseTree(root.get(), nullptr);
     out << "  }\n\n";
 
     // 生成LRU链表
@@ -638,10 +640,9 @@ void RadixCache::saveDot(const char* filename) {
     LRUNode *current = lru->head;
     while (current) {
         auto treeNode = static_cast<TreeNode*>(current->data);
-        int treeId = reinterpret_cast<intptr_t>(treeNode);
 
-        if (treeId != 0) {
-            out << "    tree_" << treeId << " -> node" << current
+        if (treeNode) {
+            out << "    tree_" << treeNode << " -> node" << current
                 << " [style=dashed, color=gray];\n";
         }
 
@@ -689,15 +690,18 @@ void RadixCache::saveDot(const char* filename) {
     out << "}\n";
 }
 
-void RadixCache::evict(int num, PoolManagerBase *pool) {
-    while (num --){
+int RadixCache::evict(int num, PoolManagerBase *pool) {
+    int slots_freed = 0;
+    while (slots_freed < num) {
         auto data = lru->evict();
         if (data == nullptr) { // no evictable node in LRU
             break;
         }
         auto node = static_cast<TreeNode *>(data);
+        slots_freed += node->value.size();
         pool->deallocate(node->value); // release slots in pool
         deleteLeaf(node);
     }
+    return slots_freed;
 }
 }

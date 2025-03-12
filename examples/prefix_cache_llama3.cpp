@@ -31,7 +31,7 @@ int main(int argc, char **argv){
     cmdParser.add<string>("vocab", 'v', "specify mllm tokenizer model path", false, "../vocab/llama3_tokenizer.model");
     cmdParser.add<string>("model", 'm', "specify mllm model path", false, "../models/llama-3.2-1b-instruct_q4_k.mllm");
     cmdParser.add<string>("billion", 'b', "[1B | 3B |]", false, "1B");
-    cmdParser.add<int>("limits", 'l', "max KV cache size", false, 400);
+    cmdParser.add<int>("limits", 'l', "max KV cache size", false, 200);
     cmdParser.add<int>("thread", 't', "num of threads", false, 4);
     cmdParser.parse_check(argc, argv);
 
@@ -41,7 +41,7 @@ int main(int argc, char **argv){
     int tokens_limit = cmdParser.get<int>("limits");
     CPUBackend::cpu_threads = cmdParser.get<int>("thread");
 
-    Llama3Config config(400, model_billion);
+    Llama3Config config(tokens_limit, model_billion);
     auto tokenizer = LLama3Tokenizer(vocab_path);
     config.cache_limit = tokens_limit;
     auto model = Llama3Model(config, true); // use_paged_attn = true
@@ -95,6 +95,7 @@ int main(int argc, char **argv){
         // so we pop the last token and find the prefix match in radix cache and then append it back
         auto last_token = req.tokens.back();
         req.tokens.pop_back();
+        // TODO: should cacheUnfinishedReq after matchPrefix but now it is not implemented
         radix_cache.matchPrefix(req.tokens, req.kv_indices); // find prefix match in radix cache
         model.set_position(req.kv_indices.size());  // NOTE: set rope position
         req.tokens.push_back(last_token);
@@ -109,9 +110,21 @@ int main(int argc, char **argv){
         for (int step = 0; step < 100; step++) {
             int num_slots_needed = req.tokens.size() - req.kv_indices.size();
             if (!pool.canAllocate(num_slots_needed)) {
-                if (num_slots_needed > tokens_limit)
-                    throw std::runtime_error("num_slots_needed > tokens_limit");
-                radix_cache.evict(num_slots_needed - pool.availableSlots(), &pool);
+                /*
+                 * FIXME: still need to use cacheFinishedReq and cacheUnfinishedReq to make sure we don't evict some prefix of the current request
+                 * */
+                // TODO: this is a walkaround to prevent evicting the cache of the current request. Now we don't need to use cacheUnfinishedReq and cacheFinishedReq
+                if (req.tokens.size() >= tokens_limit) {
+                    // this is to prevent evicting the cache of the current request
+                    throw std::runtime_error("exceed the max token limit.");
+                }
+
+                auto freed_slots = radix_cache.evict(num_slots_needed, &pool);
+                if (freed_slots < num_slots_needed) {
+                    char msg[1024];
+                    sprintf(msg, "there is not enough space in the kv cache. %d slots needed, %d slots freed.", num_slots_needed, freed_slots);
+                    throw std::runtime_error(msg);
+                }
             }
             auto out_loc_vec = pool.allocate(num_slots_needed);
             req.kv_indices.insert(req.kv_indices.end(), out_loc_vec.begin(),
@@ -132,12 +145,19 @@ int main(int argc, char **argv){
             std::cout << output_string << std::flush;
             chatPostProcessing(out_token, input_tensor, {});
 
-            // cache
-            radix_cache.cacheReq(req);
+            // NOTE: should not cache here
+            // it is possible to evict the cache of the current request
+            // we can use cacheUnfinishedReq, but now it is not implemented
+            // radix_cache.cacheReq(req);
+
             // append new token
             req.tokens.push_back(out_token);
         }
-        printf("\n");
+        // cache
+        // TODO: should cacheFinishedReq but now it is not implemented
+        req.tokens.pop_back(); // pop last token (last token has not run through the model)
+        radix_cache.cacheReq(req);
+
         model.profiling();
     }
 
