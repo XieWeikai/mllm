@@ -156,3 +156,5 @@ endif()
 # func_o_vlm_add_executable(main_vit)
 # func_o_vlm_add_executable(main_clip)
 # func_o_avlm_add_executable(main_imagebind)
+
+add_executable(mllm_benchmark_IO ${PROJECT_SOURCE_DIR}/examples/mllm_benchmark_IO.cpp)
