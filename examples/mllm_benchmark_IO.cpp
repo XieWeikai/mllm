@@ -258,28 +258,28 @@ int main(int argc, char* argv[]) {
     double write_speed = test_sequential_write(test_file, tokens_per_ms);
     if (write_speed > 0) {
         std::cout << "Sequential write speed: " << write_speed << " MB/s\n";
-        std::cout << "Sequential write throughput: " << tokens_per_ms << " tokens/ms\n";
+//        std::cout << "Sequential write throughput: " << tokens_per_ms << " tokens/ms\n";
     }
 
     std::cout << "Starting sequential read test...\n";
     double read_speed = test_sequential_read(test_file, tokens_per_ms);
     if (read_speed > 0) {
         std::cout << "Sequential read speed: " << read_speed << " MB/s\n";
-        std::cout << "Sequential read throughput: " << tokens_per_ms << " tokens/ms\n";
+//        std::cout << "Sequential read throughput: " << tokens_per_ms << " tokens/ms\n";
     }
 
     std::cout << "Starting random read test...\n";
     double random_read_speed = test_random_read(test_file, tokens_per_ms);
     if (random_read_speed > 0) {
         std::cout << "Random read speed: " << random_read_speed << " MB/s\n";
-        std::cout << "Random read throughput: " << tokens_per_ms << " tokens/ms\n";
+//        std::cout << "Random read throughput: " << tokens_per_ms << " tokens/ms\n";
     }
 
     std::cout << "Starting random write test...\n";
     double random_write_speed = test_random_write(test_file, tokens_per_ms);
     if (random_write_speed > 0) {
         std::cout << "Random write speed: " << random_write_speed << " MB/s\n";
-        std::cout << "Random write throughput: " << tokens_per_ms << " tokens/ms\n";
+//        std::cout << "Random write throughput: " << tokens_per_ms << " tokens/ms\n";
     }
 
     remove(test_file);

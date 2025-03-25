@@ -58,6 +58,7 @@ endmacro()
 
 func_llm_add_executable(mllm_benchmark)
 func_llm_add_executable(mllm_benchmark_attention)
+func_llm_add_executable(mllm_attention_cmp)
 func_llm_add_executable(demo_llama)
 func_llm_add_executable(demo_tinyllama)
 func_llm_add_executable(demo_stablelm)
@@ -158,3 +159,4 @@ endif()
 # func_o_avlm_add_executable(main_imagebind)
 
 add_executable(mllm_benchmark_IO ${PROJECT_SOURCE_DIR}/examples/mllm_benchmark_IO.cpp)
+target_compile_definitions(mllm_attention_cmp PRIVATE MLLM_ATTENTION_CMP)

@@ -33,9 +33,11 @@ void SystemMemoryManager::free(void *ptr) {
             ::free(((void **)ptr)[-1]);
         }
 #else
+#ifndef MLLM_ATTENTION_CMP
         if (malloc_usable_size(((void **)ptr)[-1]) > 0) {
             ::free(((void **)ptr)[-1]);
         }
+#endif
 #endif
     }
 }
