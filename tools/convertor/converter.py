@@ -228,7 +228,7 @@ if __name__ == "__main__":
     for key in model_keys:
         tensor = get_tensor(model, key, index_)
         key, tensor = process(key, tensor, args.model_type)
-        if tensor.dtype != torch.bool or tensor.dtype != torch.int8:
+        if tensor.dtype != torch.bool and tensor.dtype != torch.int8:
             tensor = tensor.float()
         offset, size = writer.write_tensor(tensor, key)
         print(f"Get tensor {key} to {offset} with size {size}")
