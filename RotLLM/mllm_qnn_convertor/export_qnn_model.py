@@ -177,7 +177,7 @@ class ModelExporter:
         print(f"Model saved to {output_path}")
 
 
-from utils import ConfigDict
+from utils.config import ConfigDict, CONFIG_SCHEMA
 
 
 if __name__ == "__main__":
@@ -185,22 +185,16 @@ if __name__ == "__main__":
     parser.add_argument("--config_file", type=str, required=True, help="Path to the config file")
     args = parser.parse_args()
     
-    # 从配置文件加载参数
-    config = json.load(open(args.config_file, "r"))
+    config = ConfigDict(json.load(open(args.config_file, "r")))
+    config.check_schema(CONFIG_SCHEMA)
+    export_config = config.export_config
     
-    model_type = config["model_type"]
-    tokenizer_name = config["tokenizer_name"]
-    model_name = config["model_name"]
-    scale_file = config["scale_file"]
-    output_model = config["output_model"]
-    
-    # 将配置转换为可点号访问的对象
-    export_config = ConfigDict(config.get("export_config", {}))
-    model_config = ConfigDict(config.get("model_config", {}))
-    
-    # 设置默认值
-    export_config.setdefault("t01m_clip_threshold", 64)
-    export_config.setdefault("quant_bias", False)
+    model_config = export_config.model_config
+    model_type = model_config.model_type
+    tokenizer_name = model_config.tokenizer_name
+    model_name = model_config.model_name
+    scale_file = export_config.scale_file
+    output_model = export_config.output_model
     
     print("model:", model_name)
     print("model type:", model_type)

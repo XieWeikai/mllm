@@ -50,6 +50,7 @@ def get_static_decoder_layer_scales_distribution(
     model_interface,
     dataset_path,
     num_samples=32,
+    no_bias=True,
 ):
     act_dict = {}
     
@@ -66,7 +67,7 @@ def get_static_decoder_layer_scales_distribution(
 
         ty = y.clone().detach().cpu()
         # 去除 bias（只针对 nn.Linear）
-        if isinstance(m, torch.nn.Linear) and m.bias is not None:
+        if no_bias and isinstance(m, torch.nn.Linear) and m.bias is not None:
             # print(name + str(".wobias"))
             # print(y.shape)
             
@@ -141,29 +142,49 @@ def get_act_distribution_stat(act_dict):
             act_distribution[layer] = get_act_distribution_stat(scales)
     return act_distribution
 
-from utils import ConfigDict
+from utils.config import ConfigDict, CONFIG_SCHEMA
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config_file", type=str, default="mllm_qnn_convertor/config/Qwen2-get-dis.json", help="Path to the config file")
+    parser.add_argument("--config_file", type=str, default="mllm_qnn_convertor/config/qwen1.5-1.8b.json", help="Path to the config file")
     args = parser.parse_args()
     
-    config = json.load(open(args.config_file, "r"))
+    config = ConfigDict(json.load(open(args.config_file, "r")))
+    config.check_schema(CONFIG_SCHEMA)
+    profile_config = config.profile_config
 
-    model_type = config["model_type"]
-    tokenizer_name = config["tokenizer_name"]
-    model_name = config["model_name"]
-    output_file = config["output_file"]
-    model_config = ConfigDict(config.get("model_config", {}))
+    profile_model_config = profile_config.model_config
+    model_type = profile_model_config.model_type
+    tokenizer_name = profile_model_config.tokenizer_name
+    model_name = profile_model_config.model_name
+    dataset_path = profile_config.dataset_path
+    output_file = profile_config.output_path
+    num_samples = profile_config.get("num_samples", 32)
+    no_bias = profile_config.get("no_bias", True)
+    
+
+    print("=" * 60)
+    print("Get Distribution Configuration:")
+    print("=" * 60)
+    print(f"Model Type: {model_type}")
+    print(f"Tokenizer Name: {tokenizer_name}")
+    print(f"Model Name: {model_name}")
+    print(f"Dataset Path: {dataset_path}")
+    print(f"Output File: {output_file}")
+    print(f"Number of Samples: {num_samples}")
+    print(f"No Bias: {no_bias}")
+    print(f"Model Config: {dict(profile_model_config)}")
+    print("=" * 60)
+    print()
     
     model_interface = ModelFactory.create_model(
         model_type=model_type,
         tokenizer_name=tokenizer_name,
         model_name=model_name,
-        args= model_config
+        args=profile_model_config
     )
     # FIXME: when num_samples is 1, this script will panic
-    act_dict = get_static_decoder_layer_scales_distribution(model_interface, config["dataset_path"], config["num_samples"])
+    act_dict = get_static_decoder_layer_scales_distribution(model_interface, dataset_path, num_samples, no_bias)
 
     print("begin_flatten")
     act_dict = flatten_act_dict(act_dict)
